@@ -1,1 +1,1 @@
-# ScopeDV2
+my-cool-panel
