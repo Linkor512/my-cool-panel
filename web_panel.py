@@ -190,7 +190,7 @@ def serve_files(folder, filename):
 
 @app.route('/api/get_file_lists')
 def get_file_lists():
-    return jsonify({'audio': audio_files, 'image': image_files}) # Исправлено 'images' на 'image'
+    return jsonify({'audio': audio_files, 'images': image_files}) # Убедимся, что ключ 'images' правильный
 
 @app.route('/')
 def index():
