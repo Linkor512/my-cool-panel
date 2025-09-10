@@ -1,3 +1,6 @@
+txt
+flask
 flask-sock
 gunicorn
 gevent
+requests
